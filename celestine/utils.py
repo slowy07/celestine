@@ -11,7 +11,7 @@ from torchvision import transforms, utils
 import matplotlib.pyplot as plt
 from skimage.metrics import structural_similarity as sk_ckpt_ssim
 
-import renderer_function
+import celestine.renderer_function as renderer_function
 
 M_RENDERING_SAMPLES_PER_EPOCH = 500000
 
