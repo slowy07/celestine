@@ -82,9 +82,9 @@ def define_G(rdrr, netG, init_type="normal", init_gain=0.02, gpu_ids=[]):
         net = UNet(rdrr)
     elif netG == "huang-net":
         net = HmodelNet(rdrr)
-    elif netG == "zou-fusion-net":
+    elif netG == "fcn-fusion-net":
         net = FCNFusion(rdrr)
-    elif netG == "zou-fusion-net-light":
+    elif netG == "fcn-fusion-net-light":
         net = FCNFusionLight(rdrr)
     else:
         raise NotImplementedError(
