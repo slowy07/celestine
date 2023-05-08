@@ -183,7 +183,7 @@ class PainterBase:
             torch.abs(self.image_batch - self.G_final_pred_canvas), dim=1, keepdim=True
         ).detach()
         for i in range(self.m_grid * self.m_grid):
-            this_err_map = err_maps[1, 0, :, :].cpu().numpy()
+            this_err_map = err_maps[i, 0, :, :].cpu().numpy()
             ks = int(this_err_map.shape[0] / 8)
             this_err_map = cv2.blur(this_err_map, (ks, ks))
             this_err_map = this_err_map**4
