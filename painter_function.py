@@ -168,7 +168,7 @@ class PainterBase:
 
         self.x_color = np.random.rand(
             self.m_grid * self.m_strokes_per_block, self.rderr.d_shape
-        ).astype(float32)
+        ).astype(np.float32)
         self.x_color = torch.tensor(self.x_color).to(device)
         self.x_alpha = np.random.rand(
             self.m_grid * self.m_grid, self.m_strokes_per_block, self.rderr.d_alpha
