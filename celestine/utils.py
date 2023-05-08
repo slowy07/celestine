@@ -216,7 +216,7 @@ def rotate_pt(pt, rotate_center, theta, return_int=True):
 
 
 def image_to_patches(image, m_grid, s, to_tensor=True):
-    image = cv2.resize(image, (m_grid, *s, m_grid * s))
+    image = cv2.resize(image, (m_grid * s, m_grid * s))
     image_batch = np.zeros([m_grid**2, 3, s, s], np.float32)
     for y_id in range(m_grid):
         for x_id in range(m_grid):
