@@ -60,7 +60,7 @@ class PainterBase:
             self.net_G.eval()
         else:
             print("ERROR: pre-trained renderer does not exists...")
-            exit()
+            pass
 
     def _compute_acc(self):
         target = self.image_batch.detach()
