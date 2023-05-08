@@ -218,7 +218,7 @@ class PainterBase:
             )
         self.G_loss.backward()
 
-    def forward_pass(self):
+    def _forward_pass(self):
         self.x = torch.cat([self.x_ctt, self.x_color, self.x_alpha], dim=-1)
         v = torch.reshape(
             self.x[:, 0 : self.anchor_od + 1, :],
@@ -337,7 +337,7 @@ class ProgressivePainter(PainterBase):
     def _drawing_step_states(self):
         acc = self._compute_acc().item()
         print(
-            "INFO: iteration step {}, G_loss {:5.f} step_acc: {:5.f} grid_scale: {} / {}, strokes: {} / {}".format(
+            "INFO: iteration step {}, G_loss {0:5.f} step_acc: {0:5.f} grid_scale: {} / {}, strokes: {} / {}".format(
                 self.step_id,
                 self.G_loss.item(),
                 acc,
