@@ -188,7 +188,7 @@ class PainterBase:
             this_err_map = cv2.blur(this_err_map, (ks, ks))
             this_err_map = this_err_map**4
             this_image = (
-                self.img_batch[i, :, :, :].detach().permute([1, 2, 0]).cpu().numpy()
+                self.image_batch[i, :, :, :].detach().permute([1, 2, 0]).cpu().numpy()
             )
 
             self.rderr.random_stroke_params_sampler(
