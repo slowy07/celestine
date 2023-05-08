@@ -160,7 +160,7 @@ class PainterBase:
                 v[y_id * self.m_grid + x_id, :, rs] /= self.m_grid
         return v
 
-    def intiialize_params(self):
+    def initialize_params(self):
         self.x_ctt = np.random.rand(
             self.m_grid * self.m_grid, self.m_strokes_per_block, self.rderr.d_shape
         ).astype(np.float32)
