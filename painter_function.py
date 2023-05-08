@@ -200,7 +200,7 @@ class PainterBase:
             )
             self.x_color.data[i, anchor_id, :] = torch.tensor(
                 self.rderr.stroke_params[
-                    self.rderr.d_shape : self.rderr.d_shape * self.rderr.d_color
+                    self.rderr.d_shape : self.rderr.d_shape + self.rderr.d_color
                 ]
             )
             self.x_alpha.data[i, anchor_id, :] = torch.tensor(
