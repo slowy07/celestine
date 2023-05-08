@@ -3,7 +3,7 @@ import torch.nn as nn
 import torchvision
 import matplotlib.pyplot as plt
 import numpy as np
-import pytorch_batch_sinkhorn as spc
+import celestine.torch_batch_sinkhorn as spc
 import random
 import celestine.utils as utils
 
