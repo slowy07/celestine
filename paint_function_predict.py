@@ -1,35 +1,20 @@
 import argparse
 import tempfile
-import cog
 import imageio
 import torch
 import matplotlib.pyplot as plt
 import torch.optim as optim
 from pathlib import Path
-from celestine.paint_function import *
+from celestine.paint_function import Painter
+from celestine.paint_function import utils
+from celestine.utils import _normalize_strokes
 
 
-class Predictor(cog.predictor):
-    def setup(self):
+class Predictor:
+    def __init__(self):
         self.args = self.set_args()
 
-    @cog.input("image", type=Path, help="input image")
-    @cog.input(
-        "canvas_color",
-        type=str,
-        options=["black", "white"],
-        default="black",
-        help="canvas color",
-    )
-    @cog.input("max_strokes", type=int, default=500, help="max number of strokes")
-    @cog.input(
-        "output_type",
-        type=str,
-        options=["png", "gif"],
-        default="png",
-        help="output the final painting or gif with each intermidate stroke",
-    )
-    def predict(self, image, canvas_color="black", max_strokes=500, output_type="png"):
+    def predict(self, image: Path, canvas_color: str="black", max_strokes: int=500, output_type: str="png") -> Path:
         self.args.image_path = str(image)
         self.args.canvas_color = canvas_color
         self.args.max_m_strokes = max_strokes
@@ -37,30 +22,33 @@ class Predictor(cog.predictor):
         pt = Painter(args=self.args)
         final_image, all_images = optimize_painter(pt, self.args, output_type)
 
-        out_path = Path(tempfile.mktemp()) / "out.png"
-        if output_type == "temp":
+        out_path = Path(tempfile.mkdtemp()) / f"output.{output_type}"
+        if output_type == "png":
             plt.imsave(str(out_path), final_image)
         else:
-            out_path = Path(tempfile.mkdtemp()) / "output.gif"
             imageio.mimwrite(str(out_path), all_images, duration=0.02)
         return out_path
 
-    def set_args(self):
+    def set_args(self) -> argparse.Namespace:
         parser = argparse.ArgumentParser(description="celestine")
-        args = parser.parse_args(args=[])
-        args.Renderer("oilpaintbrush")
-        args.canvas_size = 512
-        args.keep_aspect_ratio = False
-        args.m_grid = 5
-        args.max_divide = 5
-        args.beta_L1 = 1.0
-        args.with_ot_loss = False
-        args.beta_ot = 0.1
-        args.net = "fcn-fusion-net"
-        args.renderer_checkpoint_dir = "./checkpoint_G_oilpaintbrush"
-        args.lr = 0.005
-        args.output_dir = "./output"
-        args.disable_preview = True
+        parser.add_argument("image", type=str, help="Path to the image file.")
+        parser.add_argument(
+            "--canvas-color", type=str, default="black", help="Color of the canvas."
+        )
+        parser.add_argument(
+            "--max-strokes",
+            type=int,
+            default=500,
+            help="Maximum number of strokes to use.",
+        )
+        parser.add_argument(
+            "--output-type",
+            type=str,
+            choices=["png", "gif"],
+            default="png",
+            help="Output type.",
+        )
+        args = parser.parse_args()
         return args
 
 
@@ -75,9 +63,7 @@ def optimize_painter(pt, args, output_type):
     utils.set_requires_grad(pt.net_G, False)
     pt.optimizer_x = optim.RMSProp([pt.x_ctt, pt.x_color, pt.x_alpha], lr=pt.lr)
 
-    print("INFO: begin drawing...")
-
-    p.step_id = 0
+    pt.step_id = 0
     for pt.anchor_id in range(0, pt.m_strokes_per_block):
         pt.stroke_sampler(pt.anchor_id)
         iters_per_stroke = int(500 / pt.m_strokes_per_block)

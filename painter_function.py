@@ -1,6 +1,9 @@
+from __future__ import annotations
 import os
 import cv2
 import random
+import numpy as np
+import matplotlib.pyplot as plt
 import torch
 import celestine.utils as utils
 import celestine.loss_function as loss
@@ -12,84 +15,85 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class PainterBase:
-    def __init__(self, args):
+    def __init__(self, args: dict[str, any]):
         self.args = args
         self.rderr = renderer.Renderer(
             renderer=args.renderer,
             CANVAS_WIDTH=args.canvas_size,
             canvas_color=args.canvas_color,
         )
-        self.net_G = define_G(rdrr=self.rderr, netG=args.net_G).to(device)
-        self.x_ctt = None
-        self.x_color = None
-        self.x_alpha = None
-        self.G_pred_foreground = None
-        self.G_pred_alpha = None
+        self.net_G = defined_G(dir=self.redrr, netG=args.net_G).to(device)
+        self.x_ctt: torch.Tensor = None
+        self.x_color: torch.Tensor = None
+        self.x_alpha: torch.Tensor = None
+        self.G_pred_foreground: torch.Tensor = None
+        self.G_pred_alpha: torch.Tensor = None
         self.G_final_pred_canvas = torch.zeros(
             [1, 3, self.net_G.out_size, self.net_G.out_size]
         ).to(device)
-        self.G_loss = torch.tensor(0.0)
+        self.G_loss = torch.Tensor(0.0)
         self.step_id = 0
         self.anchor_id = 0
-        self.renderer_checkpoint_dir = args.renderer_checkpoint_dir
+        self.renderer_checkpoint = args.renderer_checkpoint_dir
         self.output_dir = args.output_dir
         self.lr = args.lr
-
         self._pxl_loss = loss.PixelLoss(p=1)
         self._sinkhorn_loss = loss.SinkhornLoss(epsilon=0.01, niter=5, normalize=True)
 
         self.input_aspect_ratio = None
         self.image_path = None
         self.image_batch = None
-        self.image_ = None
-        self.final_rendered_images = None
+        self.image_: torch.Tensor = None
+        self.final_rendered_images: torch.Tensor = None
         self.m_strokes_per_block = None
 
-        if os.path.exists(self.output_dir) is False:
+        if not os.path.exists(self.output_dir):
             os.mkdir(self.output_dir)
 
     def _load_checkpoint(self):
-        if os.path.exists((os.path.join(self.renderer_checkpoint_dir, "last_ckpt.pt"))):
-            print("INFO: loading renderer from pre-trainded checkpoint...")
+        checkpoint_path = os.path.join(self.renderer_checkpoint_dir, "last_ckpt.pt")
+        if os.path.exists(checkpoint_path):
+            print("[INFO] loading renderer from pre-trained checkpoint")
             checkpoint = torch.load(
-                os.path.join(self.renderer_checkpoint_dir, "lcas_ckpt.pt"),
+                checkpoint_path,
                 map_location=None if torch.cuda.is_available() else device,
             )
             self.net_G.load_state_dict(checkpoint["model_G_state_dict"])
             self.net_G.to(device)
             self.net_G.eval()
         else:
-            print("ERROR: pre-trained renderer does not exists...")
+            print("[ERROR] pre-trained renderer does not exists")
             pass
 
     def _compute_acc(self):
         target = self.image_batch.detach()
         canvas = self.G_pred_canvas.detach()
-        psnr = self.cpt_batch_psnr(canvas, target, PIXEL_MAX=1.0)
+        psnr = self.cpt_batch_snr(canvas, target, PIXEL_MAX=1.0)
         return psnr
 
-    def _save_stroke_params(self, v):
+    def _save_stroke_params(self, v: torch.Tensor):
         d_shape = self.rderr.d_shapea
         d_color = self.rderr.d_color
         d_alpha = self.rderr.d_alpha
         x_ctt = v[:, :, 0:d_shape]
         x_color = v[:, :, d_shape : d_shape + d_color]
         x_alpha = v[:, :, d_shape + d_color : d_shape + d_color + d_alpha]
-        print("INFO: saving stroke parameters")
         filename = os.path.join(self.output_dir, self.image_path.split("/")[-1][:-4])
         np.savez(
             filename + "_strokes.npz", x_ctt=x_ctt, x_color=x_color, x_alpha=x_alpha
         )
 
-    def _shuffle_strokes_and_reshape(self, v):
+    def _shuffle_strokes_and_reshape(self, v: torch.Tensor) -> torch.Tensor:
         grid_idx = list(range(self.m_grid**2))
         random.shuffle(grid_idx)
         v = v[grid_idx, :, :]
-        v = np.reshape(np.transpose(v, [1, 0, 2]), [-1, self.rderr.d])
-        v = np.expand_dims(v, axis=0)
+        v = torch.reshape(torch.transpose(v, 1, 0), [-1, self.rderr.d])
+        v = torch.unsqueeze(v, dim=0)
         return v
 
-    def _render(self, v, save_jpgs=True, save_video=True):
+    def _render(
+        self, v: torch.Tensor, save_jpgs: bool = True, save_video: bool = True
+    ) -> torch.Tensor:
         v = v[0, :, :]
         if self.args.keep_aspect_ratio < 1:
             out_h = int(self.args.canvas_size * self.input_aspect_ratio)
@@ -100,18 +104,17 @@ class PainterBase:
         filename = os.path.join(self.output_dir, self.image_path.split("/")[-1][:-4])
 
         if save_video:
-            video_writer = cv2.VideoWriter(
+            video_writter = cv2.VideoWriter(
                 filename + "_animated.mp4",
-                cv2.VideoWriter_fourcc(*"MP4V"),
+                cv2.VideoWriter(*"MP4V"),
                 40,
                 (out_w, out_h),
             )
-
-        print("INFO: rendering canvas...")
+        print("[INFO] rendering canvas...")
         self.rderr.create_empty_canvas()
         for i in range(v.shape[0]):
             self.rderr.stroke_params = v[i, :]
-            if self.rderr.check_stroke():
+            if self.rderr.draw_stroke():
                 self.rderr.draw_stroke()
             this_frame = self.rderr.canvas
             this_frame = cv2.resize(this_frame, (out_w, out_h), cv2.INTER_AREA)
@@ -121,21 +124,20 @@ class PainterBase:
                     this_frame,
                 )
             if save_video:
-                video_writer.write((this_frame[:, :, ::-1] * 255).astype(np.uint8))
-
+                video_writter.write((this_frame[:, :, ::-1] * 255).astype(np.uint8))
         if save_jpgs:
-            print("INFO: saving input photo...")
+            print("[INFO] saving input photo")
             out_image = cv2.resize(self.image_, (out_w, out_h), cv2.INTER_AREA)
             plt.imsave(filename + "_input.png", out_image)
 
         final_rendered_images = np.copy(this_frame)
         if save_jpgs:
-            print("INFO: saving final rendered result")
+            print("[INFO] saving final rendered result")
             plt.imsave(filename + "_final.png", final_rendered_images)
         return final_rendered_images
 
-    def _normalize_stokres(self, v):
-        v = np.array(v.detach().cpu())
+    def _normalize_strokes(self, v: torch.Tensor) -> torch.Tensor:
+        v = v.detach().cpu().numpy()
         if self.rderr.renderer in ["watercolor", "markerpen"]:
             xs = np.array([0, 4])
             ys = np.array([1, 5])
@@ -146,7 +148,7 @@ class PainterBase:
             rs = np.array([2, 3])
         else:
             raise NotImplementedError(
-                f"ERROR: {str(self.rderr.renderer)} is not implemented"
+                f"[ERROR] {str(self.rderr.renderer)} is not implemented"
             )
 
         for y_id in range(self.m_grid):
@@ -158,30 +160,40 @@ class PainterBase:
                 )
                 v[y_id * self.m_grid + x_id, :, xs] / self.m_grid
                 v[y_id * self.m_grid + x_id, :, rs] /= self.m_grid
-        return v
+        return torch.from_numpy(v)
 
-    def initialize_params(self):
-        self.x_ctt = np.random.rand(
-            self.m_grid * self.m_grid, self.m_strokes_per_block, self.rderr.d_shape
-        ).astype(np.float32)
-        self.x_ctt = torch.tensor(self.x_ctt).to(device)
+    def intialize_params(self):
+        self.x_ctt = (
+            torch.rand(
+                self.m_grid * self.m_grid, self.m_strokes_per_block, self.rderr.d_shape
+            )
+            .float()
+            .to(device)
+        )
 
-        self.x_color = np.random.rand(
-            self.m_grid * self.m_grid, self.m_strokes_per_block, self.rderr.d_color
-        ).astype(np.float32)
-        self.x_color = torch.tensor(self.x_color).to(device)
-        self.x_alpha = np.random.rand(
-            self.m_grid * self.m_grid, self.m_strokes_per_block, self.rderr.d_alpha
-        ).astype(np.float32)
-        self.x_alpha = torch.tensor(self.x_alpha).to(device)
+        self.x_color = (
+            torch.rand(
+                self.m_grid * self.m_grid, self.m_strokes_per_block, self.rderr.d_color
+            )
+            .float()
+            .to(device)
+        )
 
-    def stroke_sampler(self, anchor_id):
+        self.x_alpha = (
+            torch.rand(
+                self.m_grid * self.m_grid, self.m_strokes_per_block, self.rderr.d_alpha
+            )
+            .float()
+            .to(device)
+        )
+
+    def stroke_sampler(self, anchor_id: int):
         if anchor_id == self.m_strokes_per_block:
             return
 
         err_maps = torch.sum(
-            torch.abs(self.image_batch - self.G_final_pred_canvas), dim=1, keepdim=True
-        ).detach()
+            torch.abs(self.imaget_batch - self.G_final_pred_canvas), dim=1, keepdim=True
+        )
         for i in range(self.m_grid * self.m_grid):
             this_err_map = err_maps[i, 0, :, :].cpu().numpy()
             ks = int(this_err_map.shape[0] / 8)
@@ -190,7 +202,6 @@ class PainterBase:
             this_image = (
                 self.image_batch[i, :, :, :].detach().permute([1, 2, 0]).cpu().numpy()
             )
-
             self.rderr.random_stroke_params_sampler(
                 err_map=this_err_map, image=this_image
             )
@@ -250,12 +261,73 @@ class PainterBase:
         for i in range(self.anchor_id + 1):
             G_pred_foreground = self.G_pred_foreground[:, i]
             G_pred_alpha = self.G_pred_alphas[:, i]
-            self.G_pred_canvas = (
-                G_pred_foreground * G_pred_alpha
-                + self.G_pred_canvas * (1 - G_pred_alpha)
-            )
-        self.G_final_pred_canvas = self.G_pred_canvas
+            self.G_final_pred_canvas += G_pred_foreground * G_pred_alpha
 
+    def optimize(self):
+        self.optimizer_G.zero_grad()
+        if self.step_id == 0 and self.anchor_id == 0:
+            self._forward_pass()
+            self._backward_x()
+            self.optimizer_G.step()
+            self.G_pred_canvas = self.G_final_pred_canvas.detach()
+            return
+        if self.anchor_id == self.m_strokes_per_block or (
+            self.step_id != 0 and self.anchor_id == 0
+        ):
+            self._backward_x()
+            self.optimizer_G.step()
+            self.G_pred_canvas = self.G_final_pred_canvas.detach()
+            return
+        self._forward_pass()
+        self.optimizer_G.step()
+
+    def generate(self, args: dict[str, any]):
+        self.args = args
+        self._load_checkpoint()
+        self.initialize_params()
+        self.optimizer_G = torch.optim.Adam(
+            [
+                {"params": self.net_G.parameters()},
+                {"params": self.x_ctt, "lr": self.lr * 0.1},
+                {"params": self.x_color, "lr": self.lr * 0.1},
+                {"params": self.x_alpha, "lr": self.lr * 0.001},
+            ],
+            lr=self.lr,
+        )
+        num_epochs = int(self.args.stroke_num / self.m_strokes_per_block)
+
+        for epoch in range(num_epochs):
+            self.step_id = epoch
+            self.G_final_pred_canvas = torch.zeros(
+                [1, 3, self.net_G.out_size, self.net_G.out_size]
+            ).to(device)
+
+            if epoch == num_epochs - 1:
+                self.anchor_id = self.args.stroke_num - self.m_strokes_per_block * epoch
+            else:
+                self.anchor_id = self.m_strokes_per_block
+            self.stroke_sampler(self.anchor_id)
+            self.optimizer_G.zero_grad()
+            self.optimize()
+
+            if self.step_id % 100 == 0 or self.step_id == num_epochs - 1:
+                print(
+                    "[INFO] epoch",
+                    self.step_id,
+                    "step_id",
+                    self.step_id,
+                    "anchor_id",
+                    self.anchor_id,
+                    "G_loss:",
+                    self.G_loss.item(),
+                )
+            if (self.step_id % 100 == 0 and self.step_id > 0) or (
+                self.step_id == num_epochs - 1
+            ):
+                self.final_rendered_images = self._render(
+                    self._normalize_strokes(self.x)
+                )
+                self._save_stroke_params(self.x)
 
 class Painter(PainterBase):
     def __init__(self, args):
